@@ -53,6 +53,7 @@
  *   title already present in that file. Safe to interrupt and re-run.
  */
 
+import 'dotenv/config'
 import Anthropic from '@anthropic-ai/sdk'
 import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
@@ -93,9 +94,19 @@ const SERPER_KEY = process.env.SERPER_API_KEY
 
 // ── Load DVDs ─────────────────────────────────────────────────────────────────
 
+function loadServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  }
+  const filePath = path.join(__dirname, '..', 'serviceAccount.json')
+  if (existsSync(filePath)) {
+    return JSON.parse(readFileSync(filePath, 'utf8'))
+  }
+  throw new Error('Missing Firebase credentials: set FIREBASE_SERVICE_ACCOUNT or place serviceAccount.json in the project root')
+}
+
 async function loadFromFirestore() {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) throw new Error('Missing FIREBASE_SERVICE_ACCOUNT')
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  const serviceAccount = loadServiceAccount()
   initializeApp({ credential: cert(serviceAccount) })
   const db = getFirestore()
   const snap = await db.collection('dvds').orderBy('title').get()

@@ -68,8 +68,8 @@ export default function Home() {
       list.sort((a, b) => {
         if (sortBy === 'title')    return a.title.localeCompare(b.title)
         if (sortBy === 'magician') {
-          const am = Array.isArray(a.magician) ? a.magician[0] : a.magician || ''
-          const bm = Array.isArray(b.magician) ? b.magician[0] : b.magician || ''
+          const am = (Array.isArray(a.magician) ? a.magician[0] : a.magician) || ''
+          const bm = (Array.isArray(b.magician) ? b.magician[0] : b.magician) || ''
           return am.localeCompare(bm)
         }
         return 0

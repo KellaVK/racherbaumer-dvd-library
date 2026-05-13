@@ -36,6 +36,7 @@
  *   enrichedAt            always (ISO timestamp of when enrichment ran)
  */
 
+import 'dotenv/config'
 import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore }        from 'firebase-admin/firestore'
 import { readFileSync, existsSync } from 'fs'
@@ -85,8 +86,14 @@ async function main() {
   console.log(`Loaded ${entries.length} enriched entries.\n`)
 
   // Connect to Firestore
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) throw new Error('Missing FIREBASE_SERVICE_ACCOUNT')
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  let serviceAccount
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  } else {
+    const filePath = path.join(__dirname, '..', 'serviceAccount.json')
+    if (!existsSync(filePath)) throw new Error('Missing Firebase credentials: set FIREBASE_SERVICE_ACCOUNT or place serviceAccount.json in the project root')
+    serviceAccount = JSON.parse(readFileSync(filePath, 'utf8'))
+  }
   initializeApp({ credential: cert(serviceAccount) })
   const db = getFirestore()
 

@@ -17,20 +17,28 @@
  *   4. Run:                node scripts/seedFromCsv.js
  */
 
+import 'dotenv/config'
 import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import { createReadStream } from 'fs'
+import { createReadStream, readFileSync, existsSync } from 'fs'
 import { createInterface } from 'readline'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const serviceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT ||
-  (() => { throw new Error('Set FIREBASE_SERVICE_ACCOUNT env var') })()
-)
-initializeApp({ credential: cert(serviceAccount) })
+function loadServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  }
+  const filePath = path.join(__dirname, '..', 'serviceAccount.json')
+  if (existsSync(filePath)) {
+    return JSON.parse(readFileSync(filePath, 'utf8'))
+  }
+  throw new Error('Missing Firebase credentials: set FIREBASE_SERVICE_ACCOUNT or place serviceAccount.json in the project root')
+}
+
+initializeApp({ credential: cert(loadServiceAccount()) })
 const db = getFirestore()
 
 async function parseCsv(filePath) {
@@ -95,17 +103,58 @@ function splitSemi(val) {
   return val.split(';').map(s => s.trim()).filter(Boolean)
 }
 
+function normalizeTitle(title) {
+  // Lowercase, collapse whitespace, strip punctuation for fuzzy-ish matching
+  return title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+async function fetchExistingTitles() {
+  console.log('Fetching existing titles from Firestore…')
+  const snap = await db.collection('dvds').select('title').get()
+  const existing = new Set()
+  snap.forEach(doc => {
+    const t = doc.data().title
+    if (t) existing.add(normalizeTitle(t))
+  })
+  console.log(`  Found ${existing.size} existing DVDs in Firestore.`)
+  return existing
+}
+
 async function seed() {
   const csvPath = path.join(__dirname, 'dvds.csv')
   console.log(`Reading ${csvPath}…`)
   const rows = await parseCsv(csvPath)
   const dvds = rows.map(normalize).filter(Boolean)
-  console.log(`Parsed ${dvds.length} valid DVDs.`)
+  console.log(`Parsed ${dvds.length} valid DVDs from CSV.`)
 
+  const existing = await fetchExistingTitles()
+
+  const toAdd = []
+  const skipped = []
+
+  for (const dvd of dvds) {
+    if (existing.has(normalizeTitle(dvd.title))) {
+      skipped.push(dvd.title)
+    } else {
+      toAdd.push(dvd)
+    }
+  }
+
+  if (skipped.length > 0) {
+    console.log(`\nSkipping ${skipped.length} duplicate(s):`)
+    skipped.forEach(t => console.log(`  ✗ ${t}`))
+  }
+
+  if (toAdd.length === 0) {
+    console.log('\nNo new DVDs to add.')
+    return
+  }
+
+  console.log(`\nAdding ${toAdd.length} new DVD(s)…`)
   let batch = db.batch()
   let count = 0
 
-  for (const dvd of dvds) {
+  for (const dvd of toAdd) {
     const ref = db.collection('dvds').doc()
     batch.set(ref, dvd)
     count++
@@ -116,7 +165,7 @@ async function seed() {
     }
   }
   await batch.commit()
-  console.log(`✓ Done. ${count} DVDs written to Firestore.`)
+  console.log(`\n✓ Done. ${count} new DVD(s) added. ${skipped.length} duplicate(s) skipped.`)
 }
 
 seed().catch(err => { console.error(err); process.exit(1) })
