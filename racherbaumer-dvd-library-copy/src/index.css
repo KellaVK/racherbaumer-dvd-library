@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts fallback ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&family=Josefin+Sans:wght@300;400;600&display=swap');
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --gold: #c9a96e;
+    --gold-dim: #8f6e35;
+    --ink: #0d0c0a;          /* page background — very dark warm black */
+    --surface: #1c1a16;      /* card surface — clearly lighter than page */
+    --surface-2: #252219;    /* elevated surfaces, modals */
+    --border: #3a352c;       /* visible borders */
+    --border-subtle: #272319;/* hairline dividers */
+    --text: #ede8de;         /* primary — warm off-white, high contrast */
+    --text-muted: #9e9890;   /* secondary — clearly differentiated */
+    --text-dim: #5a5650;     /* tertiary / labels */
+    --available: #7ec8a0;    /* soft green for available status */
+    --checked-out: #c9a96e;  /* gold for checked out */
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+    font-family: 'Josefin Sans', 'Inter', system-ui, sans-serif;
+    font-weight: 300;
+    color: var(--text);
+    background-color: var(--ink);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  ::selection {
+    background: var(--gold);
+    color: var(--ink);
+  }
+}
+
+/* ── Components ────────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-2.5 text-xs font-semibold
+           tracking-deco uppercase transition-all duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    font-family: 'Josefin Sans', sans-serif;
+    background-color: var(--gold);
+    color: var(--ink);
+    border: 1px solid var(--gold);
+    border-radius: 0;
+    letter-spacing: 0.12em;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: #d9bf8f;
+    border-color: #d9bf8f;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-2.5 text-xs font-semibold
+           tracking-deco uppercase transition-all duration-200;
+    font-family: 'Josefin Sans', sans-serif;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    letter-spacing: 0.12em;
+  }
+  .btn-secondary:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-3 py-2 text-sm transition-all duration-200;
+    font-family: 'Josefin Sans', sans-serif;
+    color: var(--text-muted);
+    border-radius: 0;
+    background: transparent;
+  }
+  .btn-ghost:hover {
+    color: var(--gold);
+  }
+
+  /* Cards — flat Art Deco panels */
+  .card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    transition: border-color 0.25s ease, background-color 0.25s ease;
+  }
+  .card:hover {
+    border-color: var(--gold);
+    background-color: var(--surface-2);
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full px-4 py-2.5 text-sm transition-all duration-200;
+    font-family: 'Josefin Sans', sans-serif;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    color: var(--text);
+    outline: none;
+  }
+  .input::placeholder {
+    color: var(--text-dim);
+  }
+  .input:focus {
+    border-color: var(--gold);
+  }
+
+  /* Badges — monochrome Art Deco */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs uppercase;
+    font-family: 'Josefin Sans', sans-serif;
+    letter-spacing: 0.1em;
+    border-radius: 0;
+    font-weight: 400;
+  }
+
+  .badge-available {
+    @apply badge;
+    color: var(--available);
+    border: 1px solid color-mix(in srgb, var(--available) 35%, transparent);
+    background-color: color-mix(in srgb, var(--available) 8%, transparent);
+  }
+
+  .badge-checked-out {
+    @apply badge;
+    color: var(--gold);
+    border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+    background-color: color-mix(in srgb, var(--gold) 10%, transparent);
+  }
+
+  .badge-pending {
+    @apply badge;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    font-style: italic;
+  }
+
+  .badge-type {
+    @apply badge;
+    color: var(--text-dim);
+    border: 1px solid var(--border-subtle);
+  }
+
+  /* Art Deco ornamental divider */
+  .deco-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.5rem 0;
+  }
+  .deco-divider::before,
+  .deco-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .deco-divider > span {
+    color: var(--gold);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+  }
+
+  /* Label style — small caps, tracked */
+  .label {
+    @apply block text-xs uppercase;
+    font-family: 'Josefin Sans', sans-serif;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Section heading with geometric underline */
+  .section-heading {
+    @apply text-lg;
+    font-family: 'Playfair Display', serif;
+    color: var(--text);
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+  }
+
+  /* Collapsible / details */
+  details > summary {
+    @apply cursor-pointer select-none;
+    list-style: none;
+    font-family: 'Josefin Sans', sans-serif;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.2s;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: '▶';
+    font-size: 0.5rem;
+    transition: transform 0.2s;
+    color: var(--gold);
+  }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+  details[open] > summary {
+    color: var(--text);
+    margin-bottom: 0.75rem;
+  }
+
+  /* Gold accent line (decorative hr) */
+  .deco-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    position: relative;
+    margin: 2rem 0;
+  }
+  .deco-rule::after {
+    content: '◆';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--ink);
+    color: var(--gold);
+    padding: 0 0.5rem;
+    font-size: 0.55rem;
+  }
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-dim); }
+
+/* ── Page transitions ──────────────────────────────────────────────────────── */
+.page-enter {
+  animation: fadeUp 0.2s ease forwards;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
