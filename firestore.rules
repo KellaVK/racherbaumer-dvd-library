@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ───────────────────────────────────────────────────
+    function isSignedIn()  { return request.auth != null; }
+    function uid()         { return request.auth.uid; }
+    function isAdmin() {
+      return isSignedIn() &&
+             get(/databases/$(database)/documents/users/$(uid())).data.role == 'admin';
+    }
+    function isApproved() {
+      let role = get(/databases/$(database)/documents/users/$(uid())).data.role;
+      return isSignedIn() && (role == 'approved' || role == 'admin');
+    }
+
+    // ── DVDs ───────────────────────────────────────────────────────────────
+    // Anyone (even unauthenticated) can read the catalogue
+    match /dvds/{dvdId} {
+      allow read:   if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Checkouts ──────────────────────────────────────────────────────────
+    match /checkouts/{checkoutId} {
+      // Approved users can read their own checkouts; admins see all
+      allow read:   if isAdmin() || (isApproved() && resource.data.requesterId == uid());
+      // Approved users can create a request for themselves
+      allow create: if isApproved()
+                    && request.resource.data.requesterId == uid()
+                    && request.resource.data.status == 'pending';
+      // Only admins can change status (approve / deny / return)
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Users ──────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      // Users can read their own profile; admins read all
+      allow read:   if isAdmin() || (isSignedIn() && userId == uid());
+      // New user document created on registration — allow self-create
+      allow create: if isSignedIn() && userId == uid();
+      // Only admins can change roles
+      allow update: if isAdmin() || (isSignedIn() && userId == uid()
+                    && !('role' in request.resource.data.diff(resource.data).affectedKeys()));
+      allow delete: if isAdmin();
+    }
+  }
+}
