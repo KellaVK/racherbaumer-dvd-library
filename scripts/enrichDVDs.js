@@ -280,12 +280,23 @@ async function main() {
     }
 
     try {
+      // Build magician string for search queries
+      const magicianStr = (() => {
+        if (Array.isArray(dvd.magician) && dvd.magician.length > 0) return dvd.magician[0]
+        if (typeof dvd.magician === 'string' && dvd.magician.trim()) return dvd.magician.trim()
+        return ''
+      })()
+      const titleQuery    = magicianStr
+        ? `"${dvd.title}" ${magicianStr} magic dvd`
+        : `"${dvd.title}" magic dvd`
+      const siteQuery     = magicianStr
+        ? `"${dvd.title}" ${magicianStr} magic dvd (site:penguinmagic.com OR site:vanishingmagicinc.com OR site:conjuringarchive.com)`
+        : `"${dvd.title}" magic dvd (site:penguinmagic.com OR site:vanishingmagicinc.com OR site:conjuringarchive.com)`
+
       // Two searches: general + site-specific
       const [generalData, siteData] = await Promise.all([
-        serperSearch(`"${dvd.title}" magic dvd`),
-        serperSearch(
-          `"${dvd.title}" (site:penguinmagic.com OR site:vanishingmagicinc.com OR site:conjuringarchive.com)`
-        ),
+        serperSearch(titleQuery),
+        serperSearch(siteQuery),
       ])
 
       const allResults = [

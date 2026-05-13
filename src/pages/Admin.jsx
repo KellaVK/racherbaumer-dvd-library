@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   collection, onSnapshot, query, orderBy, doc,
-  updateDoc, getDocs, where, serverTimestamp, addDoc
+  updateDoc, getDocs, where, serverTimestamp, addDoc, deleteDoc
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { Link } from 'react-router-dom'
@@ -18,6 +18,7 @@ export default function Admin() {
   const [showAddDVD, setShowAddDVD] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const [selectedDVDHistory, setSelectedDVDHistory] = useState(null)
+  const [dvdToDelete, setDvdToDelete] = useState(null)
 
   // Live listeners for all three collections
   useEffect(() => {
@@ -94,6 +95,11 @@ export default function Admin() {
         })
       )
     )
+  }
+
+  async function deleteDVD(dvd) {
+    await deleteDoc(doc(db, 'dvds', dvd.id))
+    setDvdToDelete(null)
   }
 
   async function setUserRole(userId, role) {
@@ -308,6 +314,7 @@ export default function Admin() {
                     dvd={dvd}
                     onForceReturn={() => forceReturn(dvd)}
                     onViewHistory={() => setSelectedDVDHistory(dvd)}
+                    onDelete={() => setDvdToDelete(dvd)}
                   />
                 </div>
               </div>
@@ -322,6 +329,14 @@ export default function Admin() {
 
       {/* ── Modals ── */}
       {showAddDVD && <AddDVDModal onClose={() => setShowAddDVD(false)} />}
+
+      {dvdToDelete && (
+        <DeleteDVDModal
+          dvd={dvdToDelete}
+          onConfirm={() => deleteDVD(dvdToDelete)}
+          onClose={() => setDvdToDelete(null)}
+        />
+      )}
 
       {selectedUser && (
         <UserHistoryModal
@@ -424,7 +439,7 @@ function StatusBadge({ status }) {
   )
 }
 
-function AdminDVDMenu({ dvd, onForceReturn, onViewHistory }) {
+function AdminDVDMenu({ dvd, onForceReturn, onViewHistory, onDelete }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -460,6 +475,12 @@ function AdminDVDMenu({ dvd, onForceReturn, onViewHistory }) {
                 ⚡ Force Return
               </button>
             )}
+            <div className="border-t border-slate-700 mt-1" />
+            <button
+              onClick={() => { onDelete(); setOpen(false) }}
+              className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-slate-700">
+              🗑 Delete DVD
+            </button>
           </div>
         </>
       )}
@@ -770,6 +791,63 @@ function Field({ label, value, onChange, required, textarea }) {
         : <input type="text" value={value} onChange={onChange} required={required} className="input w-full" />
       }
     </div>
+  )
+}
+
+function DeleteDVDModal({ dvd, onConfirm, onClose }) {
+  const [deleting, setDeleting] = useState(false)
+  const isCheckedOut = !!dvd.checkedOutBy
+
+  async function handleDelete() {
+    setDeleting(true)
+    await onConfirm()
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      {/* Icon */}
+      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-900/40 border border-red-800/60 mb-4">
+        <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </div>
+
+      <h2 className="text-xl font-serif text-slate-100 mb-1">Delete DVD?</h2>
+      <p className="text-slate-400 text-sm mb-1">You are about to permanently delete:</p>
+      <p className="text-gold-400 font-medium mb-4">"{dvd.title}"</p>
+
+      {isCheckedOut && (
+        <div className="bg-amber-900/30 border border-amber-700/50 rounded-lg px-4 py-3 mb-4">
+          <p className="text-amber-300 text-sm font-medium">⚠ This DVD is currently checked out</p>
+          <p className="text-amber-400/70 text-xs mt-0.5">
+            Checked out by {dvd.checkedOutByName || 'unknown'}. Deleting will remove it from the library permanently.
+          </p>
+        </div>
+      )}
+
+      <p className="text-slate-500 text-sm mb-6">
+        This cannot be undone. All DVD data will be removed from the library.
+        Existing checkout history records will be preserved.
+      </p>
+
+      <div className="flex gap-3">
+        <button
+          onClick={onClose}
+          className="btn-secondary flex-1"
+          disabled={deleting}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="flex-1 px-4 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {deleting ? 'Deleting…' : 'Yes, Delete'}
+        </button>
+      </div>
+    </Modal>
   )
 }
 

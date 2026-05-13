@@ -180,6 +180,104 @@ Only non-empty values are written. Existing Firestore data is never overwritten 
 
 ---
 
+## Adding DVDs in batches
+
+The recommended workflow when adding new DVDs from a spreadsheet export:
+
+1. **Export only new rows** from Google Sheets as CSV, or export the full sheet — `seedFromCsv.js` checks for duplicates by title before writing, so it's safe to re-run with the full list.
+2. **Seed into Firestore:** `node scripts/seedFromCsv.js`
+3. **Run dedup** (see below) to catch any near-miss titles before enriching
+4. **Enrich:** `node scripts/enrichDVDs.js --source firestore`
+5. **Apply:** `node scripts/applyEnrichment.js`
+
+---
+
+## Deduplication
+
+`dedupDVDs.js` finds DVD entries that are suspiciously similar to each other — usually typos or slight title variations that slipped in across different import batches. It uses string similarity to flag candidates, then asks Claude Haiku to decide whether each pair is a true duplicate (same DVD, different spelling) or genuinely separate entries (different volumes, sequels, etc.).
+
+### When to run it
+
+Run it after seeding a new batch of DVDs, before enriching:
+
+```bash
+node scripts/dedupDVDs.js
+```
+
+### Report mode (default — no changes made)
+
+```bash
+node scripts/dedupDVDs.js
+```
+
+Prints a report like:
+
+```
+── Exact duplicates (same title, different Firestore IDs) ──────────────────
+  "Card College Vol. 1"
+    ID A: abc123
+    ID B: xyz789
+
+── Confirmed DUPLICATES ────────────────────────────────────────────────────
+  ✗ "Optical Dellusions"
+    vs "Optical Delusions"
+    Similarity: 94.4% · One is a misspelling of the other
+    Keep: abc123 | Remove: xyz789
+
+── Confirmed DIFFERENT (not duplicates) ────────────────────────────────────
+  ✓ "Ambitious Card Vol 1" vs "Ambitious Card Vol 2"
+    Reason: Different volumes of the same series
+```
+
+### Delete mode (interactive)
+
+```bash
+node scripts/dedupDVDs.js --delete
+```
+
+Steps through each confirmed duplicate and asks which to keep:
+
+```
+Duplicate: "Optical Dellusions" vs "Optical Delusions"
+  [A] Keep A, delete B  →  delete xyz789
+  [B] Keep B, delete A  →  delete abc123
+  [S] Skip this pair
+  Choice [A/B/S]:
+```
+
+Nothing is deleted until you explicitly choose A or B. Pressing S skips that pair.
+
+### Sensitivity
+
+The default threshold is `0.82` (catches typos and minor differences). You can adjust it:
+
+```bash
+# More aggressive — catches more variations
+node scripts/dedupDVDs.js --threshold 0.75
+
+# Stricter — only very close matches
+node scripts/dedupDVDs.js --threshold 0.90
+```
+
+Lower threshold = more pairs flagged. Claude still makes the final call on whether each pair is actually a duplicate, so lowering the threshold just means more pairs go to Claude for review.
+
+### dedupDVDs.js options
+
+| Flag | Description |
+|------|-------------|
+| `--delete` | Interactive mode — prompts to delete one from each duplicate pair |
+| `--threshold N` | Similarity cutoff (0–1, default `0.82`) |
+
+### What it will NOT flag as duplicates
+
+Claude is explicitly instructed to call these DIFFERENT:
+- Different volumes: "Card College Vol. 1" vs "Card College Vol. 2"
+- Different parts: "Trilogy Part 1" vs "Trilogy Part 2"
+- Sequels or follow-ups with different numbering
+- Titles that happen to be short and similar but are clearly unrelated
+
+---
+
 ## Tips
 
 - **Check quality on a small batch first** — run with `--limit 10` and review the output JSON before processing all 178 DVDs.
