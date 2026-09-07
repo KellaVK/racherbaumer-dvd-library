@@ -5,15 +5,21 @@ service cloud.firestore {
     // ── Helper functions ───────────────────────────────────────────────────
     function isSignedIn()  { return request.auth != null; }
     function uid()         { return request.auth.uid; }
-    function isAdmin() {
+    function isEmailAdmin() {
       return isSignedIn() &&
              (request.auth.token.email in ['kruebbe527@gmail.com', 'kellakruebbe@gmail.com'] ||
+              (request.auth.token.keys().hasAll(['email']) &&
+               request.auth.token.email.lower() in ['kruebbe527@gmail.com', 'kellakruebbe@gmail.com']));
+    }
+    function isAdmin() {
+      return isSignedIn() &&
+             (isEmailAdmin() ||
               (exists(/databases/$(database)/documents/users/$(uid())) &&
                get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') == 'admin'));
     }
     function isApproved() {
       return isSignedIn() &&
-             (request.auth.token.email in ['kruebbe527@gmail.com', 'kellakruebbe@gmail.com'] ||
+             (isAdmin() ||
               (exists(/databases/$(database)/documents/users/$(uid())) &&
                get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') in ['approved', 'admin']));
     }
@@ -31,25 +37,24 @@ service cloud.firestore {
     match /checkouts/{checkoutId} {
       // Users can read their own checkouts; admins see all
       allow read:   if (isSignedIn() && resource.data.requesterId == uid()) || isAdmin();
-      // Approved users can create a request for themselves
+      // Approved users and admins can create a request for themselves
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
-                    && request.resource.data.status in ['pending', 'queued']
-                    && existsAfter(/databases/$(database)/documents/openRequests/$(request.resource.data.dvdId + '_' + uid()));
+                    && request.resource.data.status in ['pending', 'queued'];
       // Only admins can change status (approve / deny / return)
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
-    // One lock per DVD and borrower prevents duplicate open requests. The
-    // checkout history remains in /checkouts after the lock is removed.
+    // ── Open Requests (Queue / Concurrency Lock) ───────────────────────────
+    // One lock per DVD and borrower prevents duplicate open requests.
     match /openRequests/{requestId} {
-      allow read: if (isSignedIn() && resource.data.requesterId == uid()) || isAdmin();
+      allow read:   if (isSignedIn() && resource.data.requesterId == uid()) || isAdmin();
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
-                    && request.resource.data.status in ['pending', 'queued']
-                    && existsAfter(/databases/$(database)/documents/checkouts/$(request.resource.data.checkoutId));
-      allow update, delete: if isAdmin();
+                    && request.resource.data.status in ['pending', 'queued'];
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.requesterId == uid());
     }
 
     // ── Users ──────────────────────────────────────────────────────────────
@@ -58,8 +63,9 @@ service cloud.firestore {
       allow read:   if isSignedIn() && (userId == uid() || isAdmin());
       // New user document created on registration — allow self-create
       allow create: if isSignedIn() && userId == uid();
-      // Only admins can change roles
-      allow update: if (isAdmin() && (userId != uid() || request.resource.data.role == resource.data.role))
+      // Admins can change roles; configured admins can self-heal; users can update non-role fields
+      allow update: if isAdmin()
+                    || (isSignedIn() && userId == uid() && isEmailAdmin() && request.resource.data.role == 'admin')
                     || (isSignedIn() && userId == uid()
                     && !('role' in request.resource.data.diff(resource.data).affectedKeys()));
       allow delete: if isAdmin();

@@ -48,16 +48,13 @@ export default function DVDDetail() {
       try {
         const q = query(
           collection(db, 'checkouts'),
-          where('dvdId', '==', id),
           where('requesterId', '==', user.uid),
-          where('status', 'in', ['pending', 'queued', 'active']),
         )
         const snap = await getDocs(q)
-        if (!snap.empty) {
-          setMyActiveRequest(snap.docs[0].data())
-        } else {
-          setMyActiveRequest(null)
-        }
+        const active = snap.docs
+          .map(d => d.data())
+          .find(d => d.dvdId === id && ['pending', 'queued', 'active'].includes(d.status))
+        setMyActiveRequest(active || null)
       } catch (err) {
         console.error('Error fetching user request for DVD:', err)
       }
