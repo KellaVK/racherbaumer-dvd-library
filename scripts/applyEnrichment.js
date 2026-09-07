@@ -109,6 +109,12 @@ async function main() {
 
     if (entry.firestoreId) {
       ref = db.collection('dvds').doc(entry.firestoreId)
+      const snap = await ref.get()
+      if (!snap.exists) {
+        console.log(`  ✗ Not found in Firestore (deleted?): "${entry.title}"`)
+        notFound++
+        continue
+      }
     } else {
       // Fall back to title lookup
       const snap = await db.collection('dvds')

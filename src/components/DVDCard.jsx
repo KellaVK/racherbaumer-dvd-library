@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import StatusBadge from './ui/StatusBadge'
 
 export default function DVDCard({ dvd }) {
+  const location = useLocation()
   const isAvailable = !dvd.checkedOutBy
   const magicians = Array.isArray(dvd.magician) ? dvd.magician : [dvd.magician].filter(Boolean)
   const types = Array.isArray(dvd.magicType)
@@ -8,14 +10,19 @@ export default function DVDCard({ dvd }) {
     : dvd.magicType?.split(';').map(t => t.trim()).filter(Boolean) || []
 
   return (
-    <Link to={`/dvd/${dvd.id}`} className="card group block" style={{ textDecoration: 'none' }}>
+    <Link
+      to={`/dvd/${dvd.id}`}
+      state={{ from: `${location.pathname}${location.search}` }}
+      className="card group block"
+      style={{ textDecoration: 'none' }}
+    >
       {/* Art Deco left border accent — indicates availability */}
       <div style={{ display: 'flex', height: '100%' }}>
         <div style={{
           width: '3px',
           backgroundColor: isAvailable ? 'var(--available)' : 'var(--gold)',
           flexShrink: 0,
-          opacity: isAvailable ? 0.7 : 0.5,
+          opacity: isAvailable ? 0.75 : 0.5,
           transition: 'opacity 0.25s',
         }} />
 
@@ -42,7 +49,7 @@ export default function DVDCard({ dvd }) {
           {/* Magician */}
           <p style={{
             fontFamily: "'Josefin Sans', sans-serif",
-            fontSize: '0.7rem',
+            fontSize: '0.72rem',
             letterSpacing: '0.05em',
             color: 'var(--text-muted)',
             marginBottom: '0.875rem',
@@ -71,13 +78,11 @@ export default function DVDCard({ dvd }) {
             paddingTop: '0.75rem',
             borderTop: '1px solid var(--border-subtle)',
           }}>
-            <span className={isAvailable ? 'badge-available' : 'badge-checked-out'}>
-              {isAvailable ? 'Available' : 'Out'}
-            </span>
-            {dvd.producer && (
+            <StatusBadge status={isAvailable ? 'available' : 'out'} />
+            {(dvd.producer || dvd.year) && (
               <span style={{
                 fontFamily: "'Josefin Sans', sans-serif",
-                fontSize: '0.6rem',
+                fontSize: '0.62rem',
                 letterSpacing: '0.08em',
                 color: 'var(--text-dim)',
                 overflow: 'hidden',
@@ -85,7 +90,7 @@ export default function DVDCard({ dvd }) {
                 whiteSpace: 'nowrap',
                 maxWidth: '8rem',
               }}>
-                {dvd.producer}
+                {dvd.producer || dvd.year}
               </span>
             )}
           </div>

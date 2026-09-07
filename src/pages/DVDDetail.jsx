@@ -1,109 +1,137 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore'
+import { useParams, Link, useLocation } from 'react-router-dom'
+import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useAuth } from '../contexts/AuthContext'
+import { requestCheckout } from '../services/checkouts'
+import { normalizeDVD, displayValue } from '../utils/dvd'
+import StatusBadge from '../components/ui/StatusBadge'
 
 export default function DVDDetail() {
   const { id } = useParams()
+  const location = useLocation()
   const { user, userProfile, isApproved } = useAuth()
   const [dvd, setDvd] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [checkedOutUser, setCheckedOutUser] = useState(null)
   const [myActiveRequest, setMyActiveRequest] = useState(null)
   const [requesting, setRequesting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  // Live DVD listener so changes in availability or AI summary reflect in real-time
   useEffect(() => {
-    async function load() {
-      const snap = await getDoc(doc(db, 'dvds', id))
+    if (!id) return
+    const unsub = onSnapshot(doc(db, 'dvds', id), snap => {
       if (snap.exists()) {
-        const data = { id: snap.id, ...snap.data() }
-        setDvd(data)
-        if (data.checkedOutBy) {
-          const userSnap = await getDoc(doc(db, 'users', data.checkedOutBy))
-          if (userSnap.exists()) setCheckedOutUser(userSnap.data())
-        }
+        const normalized = normalizeDVD({ id: snap.id, ...snap.data() })
+        setDvd(normalized)
+        document.title = `${normalized.title} — Jon Racherbaumer Magic DVD Library`
+      } else {
+        setDvd(null)
       }
-      if (user) {
+      setLoading(false)
+    }, err => {
+      console.error('Failed to load DVD:', err)
+      setLoading(false)
+    })
+
+    return () => unsub()
+  }, [id])
+
+  // Check if current user has an active, pending, or queued request
+  useEffect(() => {
+    if (!id || !user) {
+      setMyActiveRequest(null)
+      return
+    }
+    async function checkMyRequest() {
+      try {
         const q = query(
           collection(db, 'checkouts'),
           where('dvdId', '==', id),
           where('requesterId', '==', user.uid),
-          where('status', 'in', ['pending', 'active'])
+          where('status', 'in', ['pending', 'queued', 'active']),
         )
-        const existing = await getDocs(q)
-        if (!existing.empty) setMyActiveRequest(existing.docs[0].data())
+        const snap = await getDocs(q)
+        if (!snap.empty) {
+          setMyActiveRequest(snap.docs[0].data())
+        } else {
+          setMyActiveRequest(null)
+        }
+      } catch (err) {
+        console.error('Error fetching user request for DVD:', err)
       }
-      setLoading(false)
     }
-    load()
-  }, [id, user])
+    checkMyRequest()
+  }, [id, user, success])
 
-  async function requestCheckout() {
+  async function handleRequest() {
+    if (!dvd || !user) return
     setRequesting(true)
     setError('')
     try {
-      await addDoc(collection(db, 'checkouts'), {
-        dvdId:          id,
-        dvdTitle:       dvd.title,
-        requesterId:    user.uid,
-        requesterName:  userProfile?.displayName || user.email,
-        requesterEmail: user.email,
-        status:         'pending',
-        requestedAt:    serverTimestamp(),
-        returnedAt:     null,
-      })
+      const result = await requestCheckout({ dvd, user, userProfile })
       setSuccess(true)
-      setMyActiveRequest({ status: 'pending' })
-    } catch {
-      setError('Failed to submit request. Please try again.')
+      setMyActiveRequest({ status: result.status })
+    } catch (err) {
+      console.error('Checkout request failed:', err)
+      if (err.code === 'duplicate-request') {
+        setError('You already have an open request or are in the queue for this DVD.')
+      } else {
+        setError(err.message || 'Failed to submit request. Please try again.')
+      }
     } finally {
       setRequesting(false)
     }
   }
 
-  if (loading) return (
-    <div style={{ maxWidth: '48rem', margin: '0 auto', padding: '4rem 1.5rem', textAlign: 'center' }}>
-      <span style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', letterSpacing: '0.1em' }}>
-        Loading…
-      </span>
-    </div>
-  )
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '48rem', margin: '0 auto', padding: '4rem 1.5rem', textAlign: 'center' }}>
+        <span style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', letterSpacing: '0.1em' }}>
+          Loading…
+        </span>
+      </div>
+    )
+  }
 
-  if (!dvd) return (
-    <div style={{ maxWidth: '48rem', margin: '0 auto', padding: '4rem 1.5rem', textAlign: 'center' }}>
-      <div className="deco-divider"><span>◆</span></div>
-      <p style={{ color: 'var(--text-muted)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.8rem' }}>DVD not found.</p>
-      <Link to="/" className="btn-secondary" style={{ marginTop: '1.5rem', display: 'inline-flex' }}>← Back</Link>
-    </div>
-  )
+  if (!dvd) {
+    return (
+      <div style={{ maxWidth: '48rem', margin: '0 auto', padding: '4rem 1.5rem', textAlign: 'center' }}>
+        <div className="deco-divider"><span>◆</span></div>
+        <p style={{ color: 'var(--text-muted)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.8rem' }}>DVD not found.</p>
+        <Link to="/" className="btn-secondary" style={{ marginTop: '1.5rem', display: 'inline-flex' }}>← Back to Library</Link>
+      </div>
+    )
+  }
 
   const isAvailable = !dvd.checkedOutBy
-  const magicians = Array.isArray(dvd.magician) ? dvd.magician : [dvd.magician].filter(Boolean)
-  const types     = Array.isArray(dvd.magicType)
-    ? dvd.magicType
-    : dvd.magicType?.split(';').map(t => t.trim()).filter(Boolean) || []
-  const features  = Array.isArray(dvd.otherFeatures) ? dvd.otherFeatures : []
+  const magicians = dvd.magician || []
+  const types = dvd.magicType || []
+  const features = dvd.otherFeatures || []
+
+  // Preserve any search state passed in navigation or return to catalog root
+  const backTo = location.state?.from || '/'
 
   return (
     <div className="page-enter" style={{ maxWidth: '48rem', margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
 
-      {/* Back */}
-      <Link to="/" style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        fontFamily: "'Josefin Sans', sans-serif",
-        fontSize: '0.65rem',
-        letterSpacing: '0.12em',
-        textTransform: 'uppercase',
-        color: 'var(--text-dim)',
-        textDecoration: 'none',
-        marginBottom: '2.5rem',
-        transition: 'color 0.2s',
-      }}
+      {/* Back button */}
+      <Link
+        to={backTo}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          fontFamily: "'Josefin Sans', sans-serif",
+          fontSize: '0.65rem',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--text-dim)',
+          textDecoration: 'none',
+          marginBottom: '2.5rem',
+          transition: 'color 0.2s',
+        }}
         onMouseEnter={e => e.currentTarget.style.color = 'var(--gold)'}
         onMouseLeave={e => e.currentTarget.style.color = 'var(--text-dim)'}
       >
@@ -122,17 +150,16 @@ export default function DVDDetail() {
           }}>
             {dvd.title}
           </h1>
-          <span className={isAvailable ? 'badge-available' : 'badge-checked-out'} style={{ marginTop: '0.5rem', flexShrink: 0 }}>
-            {isAvailable ? 'Available' : 'Out'}
-          </span>
+          <StatusBadge status={isAvailable ? 'available' : 'out'} />
         </div>
 
         {magicians.length > 0 && (
           <p style={{
             fontFamily: "'Playfair Display', serif",
             fontStyle: 'italic',
-            fontSize: '1rem',
+            fontSize: '1.1rem',
             color: 'var(--gold)',
+            marginTop: '0.25rem',
           }}>
             {magicians.join(', ')}
           </p>
@@ -142,7 +169,7 @@ export default function DVDDetail() {
       <div className="deco-rule" />
 
       {/* Meta grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem 2rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem 2rem', marginBottom: '2rem' }}>
         {dvd.producer && (
           <div>
             <span className="label">Producer</span>
@@ -206,15 +233,16 @@ export default function DVDDetail() {
 
       {/* Collapsible: Contents / Notes */}
       {dvd.notes && (
-        <details style={{ marginBottom: '1rem' }}>
-          <summary>Contents</summary>
+        <details style={{ marginBottom: '1.25rem' }} open>
+          <summary>Contents &amp; Notes</summary>
           <div style={{
-            fontFamily: "'Josefin Sans', sans-serif",
-            fontSize: '0.82rem',
-            lineHeight: 1.75,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: '0.85rem',
+            lineHeight: 1.7,
             color: 'var(--text-muted)',
             borderLeft: '2px solid var(--border)',
             paddingLeft: '1rem',
+            whiteSpace: 'pre-line',
           }}>
             {dvd.notes}
           </div>
@@ -223,17 +251,19 @@ export default function DVDDetail() {
 
       {/* Collapsible: AI Summary */}
       {dvd.aiSummary && (
-        <details style={{ marginBottom: '1.5rem' }}>
+        <details style={{ marginBottom: '1.5rem' }} open>
           <summary>AI Summary</summary>
           <div style={{
-            fontFamily: "'Josefin Sans', sans-serif",
-            fontSize: '0.82rem',
-            lineHeight: 1.75,
-            color: 'var(--text-muted)',
-            borderLeft: '2px solid var(--gold-dim, #8f6e35)',
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: '0.85rem',
+            lineHeight: 1.7,
+            color: 'var(--text)',
+            borderLeft: '2px solid var(--gold-dim)',
             paddingLeft: '1rem',
+            backgroundColor: 'var(--surface)',
+            padding: '1rem',
           }}>
-            {dvd.aiSummary}
+            <p style={{ margin: 0 }}>{dvd.aiSummary}</p>
           </div>
         </details>
       )}
@@ -241,18 +271,19 @@ export default function DVDDetail() {
       <div className="deco-rule" style={{ margin: '2rem 0' }} />
 
       {/* Checked out notice */}
-      {!isAvailable && checkedOutUser && (
+      {!isAvailable && (
         <div style={{
           border: '1px solid var(--border)',
-          borderLeft: '2px solid var(--gold)',
+          borderLeft: '3px solid var(--gold)',
           padding: '0.875rem 1rem',
           marginBottom: '1.5rem',
+          backgroundColor: 'var(--surface)',
           fontFamily: "'Josefin Sans', sans-serif",
           fontSize: '0.75rem',
           letterSpacing: '0.04em',
           color: 'var(--text-muted)',
         }}>
-          Currently with <strong style={{ color: 'var(--text)' }}>{checkedOutUser.displayName}</strong>
+          Currently checked out{dvd.checkedOutByName ? <> to <strong style={{ color: 'var(--text)' }}>{dvd.checkedOutByName}</strong></> : ''}. You can join the waiting list below.
         </div>
       )}
 
@@ -261,48 +292,65 @@ export default function DVDDetail() {
         {!user ? (
           <>
             <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', marginBottom: '1rem', letterSpacing: '0.04em' }}>
-              Sign in to request this DVD
+              Sign in to request or join the waitlist for this DVD
             </p>
             <Link to="/login" className="btn-primary">Sign In</Link>
           </>
         ) : !isApproved ? (
-          <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', letterSpacing: '0.05em' }}>
-            Your account is pending approval.
-          </p>
-        ) : success || myActiveRequest ? (
+          <div className="notice" style={{ maxWidth: '24rem', margin: '0 auto', textAlign: 'left' }}>
+            <strong>Account Pending Approval</strong>
+            <p style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>Your account is under admin review. Once activated, you can borrow and reserve DVDs.</p>
+          </div>
+        ) : myActiveRequest ? (
           <div>
-            <span className={myActiveRequest?.status === 'active' ? 'badge-available' : 'badge-pending'}
-              style={{ fontSize: '0.7rem', padding: '0.4rem 1.25rem' }}>
-              {myActiveRequest?.status === 'active' ? 'Checked Out' : 'Request Pending'}
+            <span
+              className={
+                myActiveRequest.status === 'active'
+                  ? 'badge-available'
+                  : myActiveRequest.status === 'queued'
+                  ? 'badge-pending'
+                  : 'badge-checked-out'
+              }
+              style={{ fontSize: '0.7rem', padding: '0.4rem 1.25rem', display: 'inline-block' }}
+            >
+              {myActiveRequest.status === 'active'
+                ? 'Currently Checked Out to You'
+                : myActiveRequest.status === 'queued'
+                ? 'You are on the Waitlist'
+                : 'Borrow Request Pending'}
             </span>
-            <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.7rem', marginTop: '0.75rem', letterSpacing: '0.04em' }}>
-              {myActiveRequest?.status === 'active'
+            <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.72rem', marginTop: '0.75rem', letterSpacing: '0.04em' }}>
+              {myActiveRequest.status === 'active'
                 ? 'You currently have this DVD.'
-                : 'Admin will review your request shortly.'}
+                : myActiveRequest.status === 'queued'
+                ? 'You are queued for this DVD. When the current borrower returns it, your request will be promoted.'
+                : 'An administrator will review your checkout request shortly.'}
             </p>
           </div>
         ) : (
           <>
             {error && (
-              <p style={{ color: '#e05555', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+              <p style={{ color: 'var(--danger)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.75rem', marginBottom: '0.75rem' }}>
                 {error}
               </p>
             )}
             <button
-              onClick={requestCheckout}
-              disabled={requesting || !isAvailable}
-              className={isAvailable ? 'btn-primary' : 'btn-secondary'}
-              style={{ opacity: isAvailable ? 1 : 0.4, cursor: isAvailable ? 'pointer' : 'not-allowed' }}
+              onClick={handleRequest}
+              disabled={requesting}
+              className="btn-primary"
+              style={{ minWidth: '12rem' }}
             >
-              {isAvailable
-                ? requesting ? 'Submitting…' : 'Request Checkout'
-                : 'Currently Unavailable'}
+              {requesting
+                ? 'Submitting…'
+                : isAvailable
+                ? 'Request Checkout'
+                : 'Join Waitlist Queue'}
             </button>
-            {isAvailable && (
-              <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.65rem', marginTop: '0.75rem', letterSpacing: '0.05em' }}>
-                Admin will approve and arrange shipping or pickup.
-              </p>
-            )}
+            <p style={{ color: 'var(--text-dim)', fontFamily: "'Josefin Sans', sans-serif", fontSize: '0.65rem', marginTop: '0.75rem', letterSpacing: '0.05em' }}>
+              {isAvailable
+                ? 'Admin will approve and arrange shipping or pickup.'
+                : 'You will be placed in order of request.'}
+            </p>
           </>
         )}
       </div>

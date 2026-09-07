@@ -10,7 +10,14 @@ export default defineConfig({
 
   build: {
     outDir: 'dist',
-    // Optional: This ensures the build is clean every time
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth'],
+          vendor: ['react', 'react-dom', 'react-router-dom', 'fuse.js'],
+        },
+      },
+    },
   },
 })

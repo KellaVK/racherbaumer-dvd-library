@@ -86,11 +86,11 @@ function similarity(a, b) {
 
 // ── Claude dedup ──────────────────────────────────────────────────────────────
 
-async function classifyPairsWithClaude(pairs) {
-  if (pairs.length === 0) return []
+const CLAUDE_BATCH_SIZE = 30  // pairs per API call — keeps responses well within token limits
 
-  const pairList = pairs.map((p, i) =>
-    `${i + 1}. Title A: "${p.a.title}" | Title B: "${p.b.title}"`
+async function classifyBatchWithClaude(batch, offset) {
+  const pairList = batch.map((p, i) =>
+    `${offset + i + 1}. Title A: "${p.a.title}" | Title B: "${p.b.title}"`
   ).join('\n')
 
   const prompt = `You are helping deduplicate a magic DVD library database.
@@ -107,19 +107,36 @@ ${pairList}
 
 Return ONLY a JSON array with one object per pair in the same order:
 [
-  { "index": 1, "verdict": "DUPLICATE", "reason": "brief explanation" },
-  { "index": 2, "verdict": "DIFFERENT", "reason": "brief explanation" }
+  { "index": ${offset + 1}, "verdict": "DUPLICATE", "reason": "brief explanation" },
+  { "index": ${offset + 2}, "verdict": "DIFFERENT", "reason": "brief explanation" }
 ]`
 
   const response = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages:   [{ role: 'user', content: prompt }],
   })
 
   const raw     = response.content[0].text.trim()
   const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
   return JSON.parse(cleaned)
+}
+
+async function classifyPairsWithClaude(pairs) {
+  if (pairs.length === 0) return []
+
+  const results = []
+  for (let i = 0; i < pairs.length; i += CLAUDE_BATCH_SIZE) {
+    const batch = pairs.slice(i, i + CLAUDE_BATCH_SIZE)
+    const batchNum = Math.floor(i / CLAUDE_BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(pairs.length / CLAUDE_BATCH_SIZE)
+    if (totalBatches > 1) {
+      console.log(`  Batch ${batchNum}/${totalBatches} (${batch.length} pairs)…`)
+    }
+    const batchResults = await classifyBatchWithClaude(batch, i)
+    results.push(...batchResults)
+  }
+  return results
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

@@ -1,16 +1,48 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function Navbar() {
   const { user, userProfile, isAdmin, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const navRef = useRef(null)
+
+  // Automatically close mobile menu on route changes
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [location.pathname])
+
+  // Close on Escape or click outside
+  useEffect(() => {
+    if (!menuOpen) return
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+
+    function onClickOutside(e) {
+      if (navRef.current && !navRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('mousedown', onClickOutside)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('mousedown', onClickOutside)
+    }
+  }, [menuOpen])
 
   async function handleLogout() {
-    await logout()
-    navigate('/login')
+    try {
+      await logout()
+      navigate('/login')
+    } catch (err) {
+      console.error('Sign out error:', err)
+    }
   }
 
   const isActive = path => location.pathname === path
@@ -19,33 +51,36 @@ export default function Navbar() {
     <Link
       to={to}
       onClick={() => setMenuOpen(false)}
+      aria-current={isActive(to) ? 'page' : undefined}
       style={{
         fontFamily: "'Josefin Sans', sans-serif",
-        fontSize: '0.7rem',
+        fontSize: '0.72rem',
         letterSpacing: '0.15em',
         textTransform: 'uppercase',
-        fontWeight: 400,
+        fontWeight: isActive(to) ? 600 : 400,
         color: isActive(to) ? 'var(--gold)' : 'var(--text-muted)',
         textDecoration: 'none',
         padding: '0.25rem 0',
         borderBottom: isActive(to) ? '1px solid var(--gold)' : '1px solid transparent',
         transition: 'color 0.2s, border-color 0.2s',
       }}
-      onMouseEnter={e => { if (!isActive(to)) e.target.style.color = 'var(--text)' }}
-      onMouseLeave={e => { if (!isActive(to)) e.target.style.color = 'var(--text-muted)' }}
+      className="hover:text-gold-400"
     >
       {label}
     </Link>
   )
 
   return (
-    <nav style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      backgroundColor: 'var(--ink)',
-      borderBottom: '1px solid var(--border)',
-    }}>
+    <nav
+      ref={navRef}
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backgroundColor: 'var(--ink)',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
       {/* Thin gold accent line at very top */}
       <div style={{ height: '1px', backgroundColor: 'var(--gold)', opacity: 0.4 }} />
 
@@ -56,7 +91,7 @@ export default function Navbar() {
           <Link to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '1px' }}>
             <span style={{
               fontFamily: "'Playfair Display', serif",
-              fontSize: '1.1rem',
+              fontSize: '1.15rem',
               fontWeight: 500,
               color: 'var(--text)',
               letterSpacing: '0.03em',
@@ -70,7 +105,7 @@ export default function Navbar() {
               letterSpacing: '0.22em',
               textTransform: 'uppercase',
               color: 'var(--gold)',
-              fontWeight: 300,
+              fontWeight: 400,
             }}>
               Magic DVD Library
             </span>
@@ -88,11 +123,11 @@ export default function Navbar() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                 <span style={{
                   fontFamily: "'Josefin Sans', sans-serif",
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.1em',
+                  fontSize: '0.72rem',
+                  letterSpacing: '0.08em',
                   color: 'var(--text-dim)',
                 }}>
-                  {userProfile?.displayName || user.email}
+                  {userProfile?.displayName || user.displayName || user.email}
                 </span>
                 <button
                   onClick={handleLogout}
@@ -113,6 +148,9 @@ export default function Navbar() {
           <button
             className="sm:hidden btn-ghost"
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav-menu"
             style={{ padding: '0.5rem' }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '18px' }}>
@@ -140,14 +178,17 @@ export default function Navbar() {
 
         {/* Mobile menu */}
         {menuOpen && (
-          <div style={{
-            borderTop: '1px solid var(--border)',
-            paddingTop: '1rem',
-            paddingBottom: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
-          }}>
+          <div
+            id="mobile-nav-menu"
+            style={{
+              borderTop: '1px solid var(--border)',
+              paddingTop: '1rem',
+              paddingBottom: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+            }}
+          >
             {navLink('/', 'Browse')}
             {user && navLink('/profile', 'My Checkouts')}
             {isAdmin && navLink('/admin', 'Admin')}
@@ -157,7 +198,7 @@ export default function Navbar() {
                 onClick={() => { setMenuOpen(false); handleLogout() }}
                 style={{
                   fontFamily: "'Josefin Sans', sans-serif",
-                  fontSize: '0.7rem',
+                  fontSize: '0.72rem',
                   letterSpacing: '0.15em',
                   textTransform: 'uppercase',
                   color: 'var(--text-muted)',

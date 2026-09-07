@@ -3,6 +3,8 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { db } from '../firebase/config'
 import { useAuth } from '../contexts/AuthContext'
+import StatusBadge from '../components/ui/StatusBadge'
+import { formatFirestoreDate } from '../utils/date'
 
 export default function Profile() {
   const { user, userProfile } = useAuth()
@@ -11,8 +13,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (!user) return
-    // Simple equality query — no composite index needed.
-    // Sort newest-first client-side so this works before indexes are deployed.
+    document.title = 'My Account — Jon Racherbaumer Magic DVD Library'
     const q = query(
       collection(db, 'checkouts'),
       where('requesterId', '==', user.uid)
@@ -35,10 +36,11 @@ export default function Profile() {
 
   const active  = checkouts.filter(c => c.status === 'active')
   const pending = checkouts.filter(c => c.status === 'pending')
+  const queued  = checkouts.filter(c => c.status === 'queued')
   const history = checkouts.filter(c => c.status === 'returned' || c.status === 'denied')
 
   return (
-    <div className="page-enter" style={{ maxWidth: '40rem', margin: '0 auto', padding: '3rem 1.5rem 4rem' }}>
+    <div className="page-enter" style={{ maxWidth: '44rem', margin: '0 auto', padding: '3rem 1.5rem 4rem' }}>
 
       {/* Header */}
       <div style={{ marginBottom: '2.5rem' }}>
@@ -59,36 +61,38 @@ export default function Profile() {
           color: 'var(--text)',
           marginBottom: '0.25rem',
         }}>
-          {userProfile?.displayName}
+          {userProfile?.displayName || user?.displayName || 'Library Member'}
         </h1>
         <p style={{
           fontFamily: "'Josefin Sans', sans-serif",
-          fontSize: '0.7rem',
+          fontSize: '0.75rem',
           letterSpacing: '0.06em',
           color: 'var(--text-dim)',
         }}>
-          {user?.email}
+          {user?.email} · <span style={{ textTransform: 'capitalize' }}>{userProfile?.role || 'Member'}</span>
         </p>
       </div>
 
       {/* Stats row */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(4, 1fr)',
         borderTop: '1px solid var(--border)',
         borderLeft: '1px solid var(--border)',
         marginBottom: '2.5rem',
       }}>
         {[
           { label: 'Active',   value: active.length,  color: 'var(--text)' },
-          { label: 'Pending',  value: pending.length, color: 'var(--text-muted)' },
+          { label: 'Pending',  value: pending.length, color: 'var(--gold)' },
+          { label: 'Waitlist', value: queued.length,  color: 'var(--warning)' },
           { label: 'Returned', value: history.filter(c => c.status === 'returned').length, color: 'var(--text-dim)' },
         ].map(stat => (
           <div key={stat.label} style={{
-            padding: '1.25rem',
+            padding: '1.25rem 0.5rem',
             textAlign: 'center',
             borderRight: '1px solid var(--border)',
             borderBottom: '1px solid var(--border)',
+            backgroundColor: 'var(--surface)',
           }}>
             <div style={{
               fontFamily: "'Playfair Display', serif",
@@ -114,18 +118,27 @@ export default function Profile() {
 
       {/* Active checkouts */}
       {active.length > 0 && (
-        <Section title="Currently Checked Out">
+        <Section title="Currently Borrowed">
           {active.map(c => (
-            <CheckoutRow key={c.id} checkout={c} status="active" />
+            <CheckoutRow key={c.id} checkout={c} />
           ))}
         </Section>
       )}
 
       {/* Pending */}
       {pending.length > 0 && (
-        <Section title="Pending Requests">
+        <Section title="Pending Approval">
           {pending.map(c => (
-            <CheckoutRow key={c.id} checkout={c} status="pending" />
+            <CheckoutRow key={c.id} checkout={c} />
+          ))}
+        </Section>
+      )}
+
+      {/* Queued / Waitlist */}
+      {queued.length > 0 && (
+        <Section title="Waitlist / In Queue">
+          {queued.map(c => (
+            <CheckoutRow key={c.id} checkout={c} note="Queued for next availability" />
           ))}
         </Section>
       )}
@@ -133,13 +146,13 @@ export default function Profile() {
       {/* History — collapsible */}
       {history.length > 0 && (
         <div style={{ marginBottom: '2rem' }}>
-          <details>
+          <details open={active.length === 0 && pending.length === 0 && queued.length === 0}>
             <summary style={{ marginBottom: '1rem' }}>
-              History ({history.length})
+              Past Checkouts ({history.length})
             </summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', backgroundColor: 'var(--border-subtle)' }}>
               {history.map(c => (
-                <CheckoutRow key={c.id} checkout={c} status={c.status} />
+                <CheckoutRow key={c.id} checkout={c} />
               ))}
             </div>
           </details>
@@ -176,18 +189,8 @@ function Section({ title, children }) {
   )
 }
 
-function CheckoutRow({ checkout, status }) {
-  const date = checkout.requestedAt?.toDate?.()?.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
-
-  const statusLabel = { active: 'Active', pending: 'Pending', returned: 'Returned', denied: 'Denied' }[status] || status
-  const statusStyle = {
-    active:   { color: 'var(--text)',     border: '1px solid var(--border)' },
-    pending:  { color: 'var(--text-muted)', border: '1px solid var(--border)', fontStyle: 'italic' },
-    returned: { color: 'var(--text-dim)', border: '1px solid var(--border-subtle)' },
-    denied:   { color: '#7a3030',         border: '1px solid #3a1818' },
-  }[status] || {}
+function CheckoutRow({ checkout, note }) {
+  const date = formatFirestoreDate(checkout.requestedAt)
 
   return (
     <div style={{
@@ -198,10 +201,10 @@ function CheckoutRow({ checkout, status }) {
       padding: '0.875rem 1rem',
       backgroundColor: 'var(--surface)',
     }}>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
         <Link to={`/dvd/${checkout.dvdId}`} style={{
           fontFamily: "'Playfair Display', serif",
-          fontSize: '0.9rem',
+          fontSize: '0.95rem',
           color: 'var(--text)',
           textDecoration: 'none',
           display: 'block',
@@ -215,29 +218,17 @@ function CheckoutRow({ checkout, status }) {
         >
           {checkout.dvdTitle}
         </Link>
-        {date && (
-          <p style={{
-            fontFamily: "'Josefin Sans', sans-serif",
-            fontSize: '0.65rem',
-            letterSpacing: '0.05em',
-            color: 'var(--text-dim)',
-            marginTop: '0.125rem',
-          }}>
-            Requested {date}
-          </p>
-        )}
+        <p style={{
+          fontFamily: "'Josefin Sans', sans-serif",
+          fontSize: '0.68rem',
+          letterSpacing: '0.04em',
+          color: 'var(--text-dim)',
+          marginTop: '0.15rem',
+        }}>
+          Requested {date} {note ? `· ${note}` : ''}
+        </p>
       </div>
-      <span style={{
-        fontFamily: "'Josefin Sans', sans-serif",
-        fontSize: '0.6rem',
-        letterSpacing: '0.12em',
-        textTransform: 'uppercase',
-        padding: '0.25rem 0.6rem',
-        flexShrink: 0,
-        ...statusStyle,
-      }}>
-        {statusLabel}
-      </span>
+      <StatusBadge status={checkout.status} />
     </div>
   )
 }

@@ -30,10 +30,22 @@ service cloud.firestore {
       // Approved users can create a request for themselves
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
-                    && request.resource.data.status == 'pending';
+                    && request.resource.data.status in ['pending', 'queued']
+                    && existsAfter(/databases/$(database)/documents/openRequests/$(request.resource.data.dvdId + '_' + uid()));
       // Only admins can change status (approve / deny / return)
       allow update: if isAdmin();
       allow delete: if isAdmin();
+    }
+
+    // One lock per DVD and borrower prevents duplicate open requests. The
+    // checkout history remains in /checkouts after the lock is removed.
+    match /openRequests/{requestId} {
+      allow read: if isAdmin() || (isApproved() && resource.data.requesterId == uid());
+      allow create: if isApproved()
+                    && request.resource.data.requesterId == uid()
+                    && request.resource.data.status in ['pending', 'queued']
+                    && existsAfter(/databases/$(database)/documents/checkouts/$(request.resource.data.checkoutId));
+      allow update, delete: if isAdmin();
     }
 
     // ── Users ──────────────────────────────────────────────────────────────
@@ -43,7 +55,8 @@ service cloud.firestore {
       // New user document created on registration — allow self-create
       allow create: if isSignedIn() && userId == uid();
       // Only admins can change roles
-      allow update: if isAdmin() || (isSignedIn() && userId == uid()
+      allow update: if (isAdmin() && (userId != uid() || request.resource.data.role == resource.data.role))
+                    || (isSignedIn() && userId == uid()
                     && !('role' in request.resource.data.diff(resource.data).affectedKeys()));
       allow delete: if isAdmin();
     }

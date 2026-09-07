@@ -30,8 +30,9 @@ const db = getFirestore()
 
 async function seed() {
   console.log(`Seeding ${dvdData.length} DVDs…`)
-  const batch = db.batch()
+  let batch = db.batch()
   let count = 0
+  let batchCount = 0
 
   for (const dvd of dvdData) {
     const ref = db.collection('dvds').doc()
@@ -52,14 +53,20 @@ async function seed() {
       createdAt:          new Date(),
     })
     count++
-    // Firestore batches max at 500 writes — commit and start a new batch
-    if (count % 499 === 0) {
+    batchCount++
+    // Firestore batches max at 500 writes — commit and start a fresh batch
+    if (batchCount === 499) {
       await batch.commit()
       console.log(`  committed ${count}…`)
+      batch = db.batch()   // ← start a new batch
+      batchCount = 0
     }
   }
 
-  await batch.commit()
+  // Commit any remaining writes
+  if (batchCount > 0) {
+    await batch.commit()
+  }
   console.log(`✓ Done. ${count} DVDs written to Firestore.`)
 }
 
@@ -69,4 +76,6 @@ function parseSemicolon(val) {
   return val.split(';').map(s => s.trim()).filter(Boolean)
 }
 
-seed().catch(err => { console.error(err); process.exit(1) })
+seed()
+  .then(() => process.exit(0))          // ← must exit or Node hangs on Firebase gRPC connections
+  .catch(err => { console.error(err); process.exit(1) })
