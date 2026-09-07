@@ -11,6 +11,16 @@ import { auth, db } from '../firebase/config'
 
 const AuthContext = createContext(null)
 
+// Known admin accounts and environment-configured admin emails
+const KNOWN_ADMINS = [
+  'kruebbe527@gmail.com',
+  'kellakruebbe@gmail.com',
+  ...(import.meta.env.VITE_ADMIN_EMAILS || '').split(','),
+]
+export const ADMIN_EMAILS = new Set(
+  KNOWN_ADMINS.map(e => e.trim().toLowerCase()).filter(Boolean)
+)
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
@@ -19,12 +29,13 @@ export function AuthProvider({ children }) {
   async function register(email, password, displayName) {
     const cred = await createUserWithEmailAndPassword(auth, email, password)
     await updateProfile(cred.user, { displayName })
+    const isConfiguredAdmin = ADMIN_EMAILS.has(email.toLowerCase())
     // Create user doc in Firestore
     await setDoc(doc(db, 'users', cred.user.uid), {
       uid: cred.user.uid,
       email,
       displayName,
-      role: 'pending', // Admin must approve new users
+      role: isConfiguredAdmin ? 'admin' : 'pending',
       createdAt: serverTimestamp(),
     })
     return cred
@@ -38,13 +49,12 @@ export function AuthProvider({ children }) {
     return signOut(auth)
   }
 
-  // Holds the unsubscribe fn for the profile listener so we can clean it up
-  // when the auth user changes.
+  // Holds the unsubscribe fn for the profile listener
   const profileUnsubRef = useRef(null)
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      // Clean up the previous profile listener whenever auth state changes
+      // Clean up previous profile listener
       if (profileUnsubRef.current) {
         profileUnsubRef.current()
         profileUnsubRef.current = null
@@ -53,14 +63,49 @@ export function AuthProvider({ children }) {
       setUser(firebaseUser)
 
       if (firebaseUser) {
-        // Live listener — updates role in real-time when admin approves/changes user
+        const isConfiguredAdmin = !!firebaseUser.email && ADMIN_EMAILS.has(firebaseUser.email.toLowerCase())
+
+        // Live listener — updates role in real-time
         profileUnsubRef.current = onSnapshot(
           doc(db, 'users', firebaseUser.uid),
           (snap) => {
-            setUserProfile(snap.exists() ? snap.data() : null)
+            if (snap.exists()) {
+              const data = snap.data()
+              // If user is a configured admin but Firestore doc isn't marked admin, self-heal
+              if (isConfiguredAdmin && data.role !== 'admin') {
+                setDoc(doc(db, 'users', firebaseUser.uid), { role: 'admin' }, { merge: true }).catch(() => {})
+                setUserProfile({ ...data, role: 'admin' })
+              } else {
+                setUserProfile(data)
+              }
+            } else {
+              // Create user doc in Firestore if missing
+              const fallback = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                displayName: firebaseUser.displayName || '',
+                role: isConfiguredAdmin ? 'admin' : 'pending',
+                createdAt: serverTimestamp(),
+              }
+              setDoc(doc(db, 'users', firebaseUser.uid), fallback, { merge: true }).catch(err => {
+                console.warn('Could not auto-create profile doc in Firestore:', err)
+              })
+              setUserProfile(fallback)
+            }
             setLoading(false)
           },
-          () => setLoading(false) // on error, still stop loading
+          (err) => {
+            console.error('Firestore profile listener error:', err)
+            if (isConfiguredAdmin) {
+              setUserProfile({
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName || '',
+                role: 'admin',
+              })
+            }
+            setLoading(false)
+          }
         )
       } else {
         setUserProfile(null)
@@ -68,19 +113,21 @@ export function AuthProvider({ children }) {
       }
     })
 
+    // Safety timeout: never let auth check block the application indefinitely
+    const timeout = setTimeout(() => setLoading(false), 3000)
+
     return () => {
+      clearTimeout(timeout)
       unsubAuth()
       if (profileUnsubRef.current) profileUnsubRef.current()
     }
   }, [])
 
-  // Keep fetchUserProfile for any call-sites that still use it directly
-  function fetchUserProfile() {
-    // No-op — profile is now kept live by onSnapshot above
-  }
+  function fetchUserProfile() {}
 
-  const isAdmin = userProfile?.role === 'admin'
-  const isApproved = userProfile?.role === 'admin' || userProfile?.role === 'approved'
+  const isConfiguredAdmin = !!user?.email && ADMIN_EMAILS.has(user.email.toLowerCase())
+  const isAdmin = userProfile?.role === 'admin' || isConfiguredAdmin
+  const isApproved = isAdmin || userProfile?.role === 'approved'
 
   return (
     <AuthContext.Provider value={{
@@ -94,7 +141,7 @@ export function AuthProvider({ children }) {
       logout,
       fetchUserProfile,
     }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   )
 }

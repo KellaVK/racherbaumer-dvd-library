@@ -7,11 +7,13 @@ service cloud.firestore {
     function uid()         { return request.auth.uid; }
     function isAdmin() {
       return isSignedIn() &&
-             get(/databases/$(database)/documents/users/$(uid())).data.role == 'admin';
+             exists(/databases/$(database)/documents/users/$(uid())) &&
+             get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') == 'admin';
     }
     function isApproved() {
-      let role = get(/databases/$(database)/documents/users/$(uid())).data.role;
-      return isSignedIn() && (role == 'approved' || role == 'admin');
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(uid())) &&
+             get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') in ['approved', 'admin'];
     }
 
     // ── DVDs ───────────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ service cloud.firestore {
     // ── Checkouts ──────────────────────────────────────────────────────────
     match /checkouts/{checkoutId} {
       // Approved users can read their own checkouts; admins see all
-      allow read:   if isAdmin() || (isApproved() && resource.data.requesterId == uid());
+      allow read:   if (isApproved() && resource.data.requesterId == uid()) || isAdmin();
       // Approved users can create a request for themselves
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
@@ -40,7 +42,7 @@ service cloud.firestore {
     // One lock per DVD and borrower prevents duplicate open requests. The
     // checkout history remains in /checkouts after the lock is removed.
     match /openRequests/{requestId} {
-      allow read: if isAdmin() || (isApproved() && resource.data.requesterId == uid());
+      allow read: if (isApproved() && resource.data.requesterId == uid()) || isAdmin();
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
                     && request.resource.data.status in ['pending', 'queued']
@@ -51,7 +53,7 @@ service cloud.firestore {
     // ── Users ──────────────────────────────────────────────────────────────
     match /users/{userId} {
       // Users can read their own profile; admins read all
-      allow read:   if isAdmin() || (isSignedIn() && userId == uid());
+      allow read:   if isSignedIn() && (userId == uid() || isAdmin());
       // New user document created on registration — allow self-create
       allow create: if isSignedIn() && userId == uid();
       // Only admins can change roles
