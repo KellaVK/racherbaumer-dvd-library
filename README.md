@@ -96,19 +96,27 @@ In Cloudflare Pages → your project → **Custom domains** → Add `dvds.kellak
 
 ---
 
-## Adding AI enrichment (Phase 2)
+## AI Summary Service (Claude + Cloudflare Pages Functions)
 
-Each DVD document has placeholder fields ready for enrichment:
-- `aiSummary` — generated description
-- `vanishingIncUrl` — link to Vanishing Inc listing
-- `penguinUrl` — link to Penguin Magic listing
-- `conjuringArchiveUrl` — link to Conjuring Archive
+The catalog features an integrated AI summary generator powered by Anthropic Claude via a Cloudflare Pages Function at `/api/summarize-dvd`.
 
-To enrich a DVD, the Admin panel's **✨ AI Enrich** button is wired up as a placeholder. The next phase will use a Firebase Function or a Cloudflare Worker that:
-1. Searches Vanishing Inc / Penguin Magic / Conjuring Archive for the DVD title
-2. Extracts description text
-3. Calls Claude API to generate a clean summary
-4. Writes back to the Firestore document
+### How it works
+1. When an admin adds a new DVD or clicks **"Generate summary"** in the Admin panel under **DVDs**:
+   - The frontend calls `POST /api/summarize-dvd` with the DVD ID and the admin's Firebase auth token.
+   - The Cloudflare Function verifies the user has `role: "admin"` in Firestore.
+   - The function calls Claude to create a factual 2–4 sentence catalog description based strictly on the DVD's title, magician, magic type, and notes.
+   - The summary and status (`complete`, `insufficient`, or `failed`) are patched directly back to Firestore.
+   - The live Firestore snapshot updates the UI in real-time.
+
+### Setup in Cloudflare Pages Dashboard
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → select your project (`racherbaumer-dvd-library`).
+2. Go to **Settings** → **Environment variables**.
+3. Under **Production** (and Preview if desired), click **Add variables**:
+   - `ANTHROPIC_API_KEY`: Your Anthropic API key (from [console.anthropic.com](https://console.anthropic.com)).
+   - `FIREBASE_PROJECT_ID`: Your Firebase project ID (e.g. `racherbaumer-dvd-library`).
+   - `CLAUDE_MODEL` *(optional)*: Defaults to `claude-haiku-4-5-20251001`.
+4. Click **Save**.
+5. Trigger a new deployment (or redeploy the latest build) so the Pages Function picks up the environment variables.
 
 ---
 
