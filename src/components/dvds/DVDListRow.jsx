@@ -1,16 +1,16 @@
 import { Link } from 'react-router-dom'
 import StatusBadge from '../ui/StatusBadge'
 
-export default function DVDListRow({ dvd }) {
-  const isAvailable = !dvd.checkedOutBy
-  const magicians = Array.isArray(dvd.magician) ? dvd.magician : [dvd.magician].filter(Boolean)
-  const types = Array.isArray(dvd.magicType) ? dvd.magicType : []
+export default function DVDListRow({ dvd = {} }) {
+  const isAvailable = !dvd?.checkedOutBy
+  const magicians = Array.isArray(dvd?.magician) ? dvd.magician : [dvd?.magician].filter(Boolean)
+  const types = Array.isArray(dvd?.magicType) ? dvd.magicType : []
 
   return (
     <article className="catalog-list-row">
       <div className="list-row-main">
-        <Link to={`/dvd/${dvd.id}`} className="list-row-title">
-          {dvd.title}
+        <Link to={`/dvd/${dvd?.id}`} className="list-row-title">
+          {dvd?.title || 'Untitled DVD'}
         </Link>
         <div className="list-row-meta">
           <span className="list-row-magician">{magicians.join(', ') || '—'}</span>

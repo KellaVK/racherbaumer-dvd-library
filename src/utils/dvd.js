@@ -28,16 +28,17 @@ export function displayValue(value, fallback = 'Not listed') {
 }
 
 export function normalizeDVD(raw = {}) {
-  const aiSummary = isPlaceholder(raw.aiSummary) ? '' : String(raw.aiSummary).trim()
+  const safe = raw || {}
+  const aiSummary = isPlaceholder(safe.aiSummary) ? '' : String(safe.aiSummary).trim()
   return {
-    ...raw,
-    title: isPlaceholder(raw.title) ? 'Untitled DVD' : String(raw.title).trim(),
-    magician: normalizeList(raw.magician),
-    magicType: normalizeList(raw.magicType),
-    otherFeatures: normalizeList(raw.otherFeatures),
-    featured: raw.featured === true,
+    ...safe,
+    title: isPlaceholder(safe.title) ? 'Untitled DVD' : String(safe.title).trim(),
+    magician: normalizeList(safe.magician),
+    magicType: normalizeList(safe.magicType),
+    otherFeatures: normalizeList(safe.otherFeatures),
+    featured: safe.featured === true,
     aiSummary,
-    aiSummaryStatus: raw.aiSummaryStatus || (aiSummary ? 'complete' : 'not_requested'),
+    aiSummaryStatus: safe.aiSummaryStatus || (aiSummary ? 'complete' : 'not_requested'),
   }
 }
 
@@ -107,9 +108,9 @@ function includesValue(list, requested) {
   return normalizeList(list).some(item => item.toLocaleLowerCase() === requested.toLocaleLowerCase())
 }
 
-export function filterDVDs(dvds, state = {}) {
+export function filterDVDs(dvds = [], state = {}) {
   const query = String(state.query ?? '').trim().toLocaleLowerCase()
-  const output = dvds.filter(raw => {
+  const output = (dvds || []).filter(raw => {
     const dvd = normalizeDVD(raw)
     if (query && ![
       dvd.title,
@@ -126,7 +127,7 @@ export function filterDVDs(dvds, state = {}) {
     if (state.featured === 'featured' && !dvd.featured) return false
     if (state.featured === 'not-featured' && dvd.featured) return false
     if (state.summary && state.summary !== 'all' && dvd.aiSummaryStatus !== state.summary) return false
-    if (state.letter && state.letter !== 'all' && !dvd.title.toLocaleUpperCase().startsWith(state.letter.toLocaleUpperCase())) return false
+    if (state.letter && state.letter !== 'all' && !String(dvd.title || '').toLocaleUpperCase().startsWith(state.letter.toLocaleUpperCase())) return false
     if (state.era && state.era !== 'all') {
       const year = Number(dvd.year)
       const decade = Number(String(state.era).replace(/[^0-9]/g, ''))
@@ -136,12 +137,24 @@ export function filterDVDs(dvds, state = {}) {
   })
 
   const sorted = [...output]
-  const firstMagician = dvd => normalizeDVD(dvd).magician[0] || ''
-  sorted.sort((a, b) => {
-    if (state.sort === 'magician') return firstMagician(a).localeCompare(firstMagician(b)) || a.title.localeCompare(b.title)
-    if (state.sort === 'year-new') return (Number(b.year) || 0) - (Number(a.year) || 0) || a.title.localeCompare(b.title)
-    if (state.sort === 'year-old') return (Number(a.year) || Infinity) - (Number(b.year) || Infinity) || a.title.localeCompare(b.title)
-    return a.title.localeCompare(b.title)
-  })
+  const firstMagician = dvd => (normalizeDVD(dvd).magician[0] || '')
+  if (state.sort) {
+    sorted.sort((a, b) => {
+      const titleA = String(a?.title || '')
+      const titleB = String(b?.title || '')
+      if (state.sort === 'magician') {
+        const magA = firstMagician(a)
+        const magB = firstMagician(b)
+        return magA.localeCompare(magB) || titleA.localeCompare(titleB)
+      }
+      if (state.sort === 'year-new') {
+        return (Number(b?.year) || 0) - (Number(a?.year) || 0) || titleA.localeCompare(titleB)
+      }
+      if (state.sort === 'year-old') {
+        return (Number(a?.year) || Infinity) - (Number(b?.year) || Infinity) || titleA.localeCompare(titleB)
+      }
+      return titleA.localeCompare(titleB)
+    })
+  }
   return sorted
 }

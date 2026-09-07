@@ -1,13 +1,15 @@
 import { Link, useLocation } from 'react-router-dom'
 import StatusBadge from './ui/StatusBadge'
 
-export default function DVDCard({ dvd }) {
+export default function DVDCard({ dvd = {} }) {
   const location = useLocation()
-  const isAvailable = !dvd.checkedOutBy
-  const magicians = Array.isArray(dvd.magician) ? dvd.magician : [dvd.magician].filter(Boolean)
-  const types = Array.isArray(dvd.magicType)
+  const isAvailable = !dvd?.checkedOutBy
+  const magicians = Array.isArray(dvd?.magician) ? dvd.magician : [dvd?.magician].filter(Boolean)
+  const types = Array.isArray(dvd?.magicType)
     ? dvd.magicType
-    : dvd.magicType?.split(';').map(t => t.trim()).filter(Boolean) || []
+    : typeof dvd?.magicType === 'string'
+      ? dvd.magicType.split(';').map(t => t.trim()).filter(Boolean)
+      : []
 
   return (
     <Link
@@ -43,7 +45,7 @@ export default function DVDCard({ dvd }) {
           }}
             className="group-hover:text-gold-400"
           >
-            {dvd.title}
+            {dvd?.title || 'Untitled DVD'}
           </h3>
 
           {/* Magician */}

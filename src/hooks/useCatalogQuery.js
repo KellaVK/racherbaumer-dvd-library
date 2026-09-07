@@ -90,10 +90,13 @@ export function useCatalogQuery(rawDvds = []) {
     let availableCount = 0
 
     normalizedDvds.forEach(dvd => {
-      if (!dvd.checkedOutBy) availableCount += 1
+      if (!dvd.checkedOutBy) {
+        availableCount += 1
+      }
 
       // Types
-      (dvd.magicType || []).forEach(t => {
+      const dvdTypes = Array.isArray(dvd.magicType) ? dvd.magicType : []
+      dvdTypes.forEach(t => {
         if (t) typesMap.set(t, (typesMap.get(t) || 0) + 1)
       })
 

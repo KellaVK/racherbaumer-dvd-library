@@ -6,4 +6,5 @@ serviceAccount*.json
 scripts/dvds.csv
 .DS_Store
 .simdutf_fix
+skill-observations/
 

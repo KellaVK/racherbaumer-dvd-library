@@ -74,4 +74,21 @@ describe('catalog filtering', () => {
     expect(filterDVDs(dvds, { summary: 'complete' }).map(d => d.id)).toEqual(['2'])
     expect(filterDVDs(dvds, { letter: 'C' })).toHaveLength(2)
   })
+
+  it('safely handles null and malformed records during filtering and sorting', () => {
+    const rawCorrupt = [
+      null,
+      {},
+      { id: 'bad1', title: null, year: 'invalid' },
+      { id: 'bad2', magician: null },
+      { id: 'good', title: 'Solid Card Trick', magician: ['John Doe'], year: '1998' },
+    ]
+    expect(() => normalizeDVD(null)).not.toThrow()
+    expect(() => filterDVDs(rawCorrupt, { sort: 'title' })).not.toThrow()
+    expect(() => filterDVDs(rawCorrupt, { sort: 'magician' })).not.toThrow()
+    expect(() => filterDVDs(rawCorrupt, { sort: 'year-new' })).not.toThrow()
+    expect(() => filterDVDs(rawCorrupt, { sort: 'year-old' })).not.toThrow()
+    const res = filterDVDs(rawCorrupt, { sort: 'title' })
+    expect(res).toBeInstanceOf(Array)
+  })
 })
