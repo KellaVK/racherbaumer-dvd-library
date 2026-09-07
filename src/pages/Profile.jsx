@@ -14,24 +14,31 @@ export default function Profile() {
   useEffect(() => {
     if (!user) return
     document.title = 'My Account — Jon Racherbaumer Magic DVD Library'
+    const timeout = setTimeout(() => setLoading(false), 3000)
     const q = query(
       collection(db, 'checkouts'),
       where('requesterId', '==', user.uid)
     )
-    return onSnapshot(q, snap => {
+    const unsub = onSnapshot(q, snap => {
+      clearTimeout(timeout)
       const docs = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => {
-          const ta = a.requestedAt?.toMillis?.() ?? 0
-          const tb = b.requestedAt?.toMillis?.() ?? 0
+          const ta = a.requestedAt?.toMillis?.() ?? (a.requestedAt instanceof Date ? a.requestedAt.getTime() : 0)
+          const tb = b.requestedAt?.toMillis?.() ?? (b.requestedAt instanceof Date ? b.requestedAt.getTime() : 0)
           return tb - ta
         })
       setCheckouts(docs)
       setLoading(false)
     }, err => {
+      clearTimeout(timeout)
       console.error('Checkouts query failed:', err)
       setLoading(false)
     })
+    return () => {
+      clearTimeout(timeout)
+      unsub()
+    }
   }, [user])
 
   const active  = checkouts.filter(c => c.status === 'active')

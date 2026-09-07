@@ -7,13 +7,15 @@ service cloud.firestore {
     function uid()         { return request.auth.uid; }
     function isAdmin() {
       return isSignedIn() &&
-             exists(/databases/$(database)/documents/users/$(uid())) &&
-             get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') == 'admin';
+             (request.auth.token.email in ['kruebbe527@gmail.com', 'kellakruebbe@gmail.com'] ||
+              (exists(/databases/$(database)/documents/users/$(uid())) &&
+               get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') == 'admin'));
     }
     function isApproved() {
       return isSignedIn() &&
-             exists(/databases/$(database)/documents/users/$(uid())) &&
-             get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') in ['approved', 'admin'];
+             (request.auth.token.email in ['kruebbe527@gmail.com', 'kellakruebbe@gmail.com'] ||
+              (exists(/databases/$(database)/documents/users/$(uid())) &&
+               get(/databases/$(database)/documents/users/$(uid())).data.get('role', '') in ['approved', 'admin']));
     }
 
     // ── DVDs ───────────────────────────────────────────────────────────────
@@ -27,8 +29,8 @@ service cloud.firestore {
 
     // ── Checkouts ──────────────────────────────────────────────────────────
     match /checkouts/{checkoutId} {
-      // Approved users can read their own checkouts; admins see all
-      allow read:   if (isApproved() && resource.data.requesterId == uid()) || isAdmin();
+      // Users can read their own checkouts; admins see all
+      allow read:   if (isSignedIn() && resource.data.requesterId == uid()) || isAdmin();
       // Approved users can create a request for themselves
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
@@ -42,7 +44,7 @@ service cloud.firestore {
     // One lock per DVD and borrower prevents duplicate open requests. The
     // checkout history remains in /checkouts after the lock is removed.
     match /openRequests/{requestId} {
-      allow read: if (isApproved() && resource.data.requesterId == uid()) || isAdmin();
+      allow read: if (isSignedIn() && resource.data.requesterId == uid()) || isAdmin();
       allow create: if isApproved()
                     && request.resource.data.requesterId == uid()
                     && request.resource.data.status in ['pending', 'queued']

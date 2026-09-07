@@ -16,21 +16,26 @@ export default function Home() {
 
   useEffect(() => {
     document.title = 'Jon Racherbaumer Magic DVD Library'
-    const q = query(collection(db, 'dvds'), orderBy('title'))
+    const timeout = setTimeout(() => setLoading(false), 3500)
     const unsub = onSnapshot(
-      q,
+      collection(db, 'dvds'),
       snap => {
+        clearTimeout(timeout)
         setDvds(snap.docs.map(d => ({ id: d.id, ...d.data() })))
         setLoading(false)
         setLoadError(null)
       },
       err => {
+        clearTimeout(timeout)
         console.error('Firestore snapshot error on DVDs:', err)
         setLoadError('The catalog could not be loaded from the library archive. Please check your connection and reload.')
         setLoading(false)
       }
     )
-    return () => unsub()
+    return () => {
+      clearTimeout(timeout)
+      unsub()
+    }
   }, [])
 
   const {
